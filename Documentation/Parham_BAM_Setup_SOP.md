@@ -1,4 +1,4 @@
-# BAM Full Installation SOP --- Windows (Tested February 2026)
+# BAM Full Installation SOP --- Windows (V1.0.1)
 
 This Standard Operating Procedure (SOP) covers the complete installation and setup of NASA's
 Baseball Avoidance Multirotor (BAM) simulation with the ROS2 + Colosseum + Unreal Engine
@@ -108,6 +108,8 @@ git clone https://github.com/CodexLabsLLC/Colosseum.git
 cd Colosseum
 ```
 3. Run `build.cmd` from the command line. 
+
+> **Note:** If you're using `C:` drive, before you need to do Step 1 in Admin Mode. In the start menu, search for `Developer Command Prompt for VS 2022`, right-click and hover on **More**, then select **Run as Administrator**.
 
 #### 2.1.2 Verify
 
