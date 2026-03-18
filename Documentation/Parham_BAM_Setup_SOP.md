@@ -111,7 +111,47 @@ Your prompt will change to `(robostack:jazzy)`.
 Follow the [Colosseum build instructions](https://codexlabsllc.github.io/Colosseum/build_windows/)
 for Windows.
 
-#### 2.1.1 Instructions
+#### 2.1.1 Fix for baseball not spawning.
+
+> **NOTE:** Red is for the lines you must remove, and green is the lines you must replace it with. 
+
+1. After cloning the repo, open `AirLib\include\api\RpcLibClientBase.hpp`. Find the red code on lines 70-71. 
+
+```diff
+-        std::string simSpawnObject(const std::string& object_name, const std::string& load_component, const Pose& pose,
+-                                   const Vector3r& scale, bool physics_enabled);
++        std::string simSpawnObject(const std::string& object_name, const std::string& load_component, const Pose& pose,
++                                   const Vector3r& scale, bool physics_enabled, bool is_blueprint = false);
+```
+2. Then, open `AirLib\src\api\RpcLibClientBase.cpp`. Find lines 516-520.
+```diff
+-        std::string RpcLibClientBase::simSpawnObject(const std::string& object_name, const std::string& load_component, const Pose& pose,
+-                                                     const Vector3r& scale, bool physics_enabled)
+-        {
+-            return pimpl_->client.call("simSpawnObject", object_name, load_component, RpcLibAdaptorsBase::Pose(pose), RpcLibAdaptorsBase::Vector3r(scale), physics_enabled).as<std::string>();
+-        }
++        std::string RpcLibClientBase::simSpawnObject(const std::string& object_name, const std::string& load_component, const Pose& pose,
++                                                     const Vector3r& scale, bool physics_enabled, bool is_blueprint)
++        {
++            return pimpl_->client.call("simSpawnObject", object_name, load_component, RpcLibAdaptorsBase::Pose(pose), RpcLibAdaptorsBase::Vector3r(scale), physics_enabled, is_blueprint).as<std::string>();
++        }
+```
+
+3. After saving both of those changes, continue to the instructions in section 2.1.2.
+
+> **NOTE:** If you had already built Colosseum, and you're revisiting to fix the no baseball error, you must delete `build\bam_2_airsim_pkg` like so:
+```bat
+cd C:\Users\%USERPROFILE%\robostack
+pixi shell -e jazzy
+D:
+cd BAM\AE403-BAM
+rd /s /q build\bam_2_airsim_pkg
+set AirSimLib=D:\BAM\Colosseum\AirLib
+colcon build
+install\local_setup.bat
+```
+
+#### 2.1.2 Instructions
 1. Launch `Developer Command Prompt for VS 2022` (**as Administrator** if using virtual D: drive)
 2. Open our BAM folder and clone the Repo:
 ```bat
@@ -122,7 +162,7 @@ cd Colosseum
 ```
 3. Run `build.cmd` from the command line.
 
-#### 2.1.2 Verify
+#### 2.1.3 Verify
 
 After a successful build, verify that you have:
 
@@ -283,14 +323,8 @@ pixi shell -e jazzy
 D:
 cd BAM\AE403-BAM
 install\local_setup.bat
-ros2 run bam_2_airsim_pkg Bam2Airsim -nobb
+ros2 run bam_2_airsim_pkg Bam2Airsim
 ```
-
-> **Why `-nobb`?** There is a known bug in Colosseum's `simSpawnObject` RPC binding
-> for Unreal 5 that causes the baseball asset spawn to fail with
-> `rpc::rpc_error during call`. The `-nobb` flag disables the baseball and runs
-> the drone-only visualization. See the "Known Issues" table below for more detail
-> on fixing this.
 
 **Expected output:**
 ```
@@ -405,7 +439,6 @@ install\local_setup.bat
 | Issue | Symptom | Workaround |
 |-------|---------|------------|
 | LFS budget exceeded | `git clone` fails to download `Win_BAM_English_College.zip` | Download from [Releases](https://github.com/nasa/Baseball-Avoidance-Multirotor-BAM/releases) page |
-| Baseball spawn fails | `rpc::rpc_error during call` when Bam2Airsim starts | Use `-nobb` flag to skip baseball. Root cause: Colosseum's `simSpawnObject` C++ RPC binding has a function signature mismatch with UE5's `WorldSimApi->spawnObject()`. Fix requires patching `RpcLibServerBase.cpp` in Colosseum — contact daniel.r.hill@nasa.gov for the patch. |
 | `install_bam_ros_packages.bat` fails | `egg_base` path error for Python packages | Use manual `colcon build` from repo root instead |
 | `bam_2_airsim_pkg` build fails | `Cannot open include file` for AirSim headers | Set `AirSimLib` env var, then `rd /s /q build\bam_2_airsim_pkg` and rebuild |
 | C: drive only (no D: drive) | Colosseum build fails due to long paths / permissions | Use `subst D: C:\Users\%USERNAME%\BAM` to create a virtual D: drive. See Step 0.5. |
