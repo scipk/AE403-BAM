@@ -88,7 +88,7 @@ userStruct.model_params.stop_time = time_wptsX(end);
 
 %% Setup Model
 setup;
-Plot_PW_Bezier(waypoints,time_wpts)
+Plot_PW_Bezier(waypoints,time_wpts, 1)
 
 %% Post-Setup Processing 
 % During development, it is often convenient to directly change the
