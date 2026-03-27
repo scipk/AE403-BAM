@@ -14,6 +14,7 @@ mapToUserSimOut.m
 *.r2020b
 *.r2022b
 *.r2023b
+*.r2024b
 *.original
 **__pycache__/
 ROS2_ws/build/
