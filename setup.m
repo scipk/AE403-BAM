@@ -25,7 +25,7 @@
 % 1.22.2025, MJA: Initial version of script.  Created for open-source
 % release of entire .git repository
 % *************************************************************************
-
+% Setup Start
 %% Setup matlab
 sim_directory = cd;
 model_name = 'BAM.slx';
