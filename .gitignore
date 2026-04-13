@@ -27,3 +27,9 @@ setup_with_ros2.m
 _data/
 
 ChallengeProblem/Chal_Prob_plots/
+/build
+/install
+/log
+/ROS2_ws
+/ROS2_ws
+/VisualEnv
