@@ -39,9 +39,9 @@ plot_flag = 1; % plot_flag == 0 => perform setup only (user run in simulink)
 % If ROS2 publishing is to be utilized that must uncomment the userStruct 
 % variant line below to utilize the ROS2 variant subsystem:
 
-userStruct.variants.pubType = 2; % 1=>Default, no ROS2 publishing used
+userStruct.variants.pubType = 1; % 1=>Default, no ROS2 publishing used
 userStruct.variants.refInputTypeBball=2; % 2=> use BEZ bball ref trajectory
-userStruct.variants.pubTypeBball=2; % 2=> publish bball pose via ROS2 msg
+userStruct.variants.pubTypeBball=1; % 2=> publish bball pose via ROS2 msg
 
 % NOTE: in order to use the ROS2 publishing variant, users must make sure
 % that MATLAB has access to ROS2.  In order to do this on windows, use a
