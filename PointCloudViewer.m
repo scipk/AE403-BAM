@@ -1,105 +1,86 @@
-classdef PointCloudViewer < matlab.System
-    % Live point cloud viewer for Simulink
-    % Inputs:
-    %   xyz: [N x 3]
-    %   pos: [3 x 1] detection point (use [NaN;NaN;NaN] to hide)
-
+ classdef PointCloudViewer < matlab.System
     properties
-        PointSize (1,1) double = 3
-        XLim (1,2) double = [0 60]
-        YLim (1,2) double = [-30 30]
-        ZLim (1,2) double = [-10 10]
-        Decimate (1,1) double = 2
-        ShowDetection (1,1) logical = true
+        XLimits = [-100 100];
+        YLimits = [-100 100];
+        ZLimits = [-20 20];
     end
 
-    properties(Access=private)
-        Fig
-        Ax
-        Sc
-        DetSc
-        Txt
-        FrameCount (1,1) uint32 = 0
+    properties(Access = private)
+        viewer
+        stepCount = 0
     end
 
-    methods(Access=protected)
-        function setupImpl(obj)
-            obj.Fig = figure('Name','Live Point Cloud','NumberTitle','off');
-            obj.Ax = axes(obj.Fig);
-            grid(obj.Ax,'on');
-            view(obj.Ax,3);
-
-            xlabel(obj.Ax,'N');
-            ylabel(obj.Ax,'E');
-            zlabel(obj.Ax,'D');
-
-            xlim(obj.Ax, obj.XLim);
-            ylim(obj.Ax, obj.YLim);
-            zlim(obj.Ax, obj.ZLim);
-            axis(obj.Ax,'equal');
-
-            obj.Sc = scatter3(obj.Ax, NaN,NaN,NaN, obj.PointSize, '.');
-            hold(obj.Ax,'on');
-            obj.DetSc = scatter3(obj.Ax, NaN,NaN,NaN, 60, 'o', 'filled');
-            hold(obj.Ax,'off');
-
-            obj.Txt = title(obj.Ax,'Frame 0');
-            drawnow;
+    methods(Access = protected)
+        function setupImpl(obj, xyz)
+            obj.viewer = pcplayer(obj.XLimits, obj.YLimits, obj.ZLimits);
+            xlabel(obj.viewer.Axes, 'X');
+            ylabel(obj.viewer.Axes, 'Y');
+            zlabel(obj.viewer.Axes, 'Z');
+            title(obj.viewer.Axes, 'Live LiDAR Point Cloud');
         end
 
-        function stepImpl(obj, xyz, nValid, pos)
-        obj.FrameCount = obj.FrameCount + uint32(1);
-    
-        if isempty(xyz) || size(xyz,2) ~= 3
-            return;
-        end
-    
-        % Clamp nValid safely
-        nv = double(nValid);
-        if ~isfinite(nv) || nv < 0
-            nv = 0;
-        end
-        if nv > size(xyz,1)
-            nv = size(xyz,1);
-        end
-    
-        if nv == 0
-            set(obj.Sc, 'XData', NaN, 'YData', NaN, 'ZData', NaN);
-        else
-            xyz = xyz(1:nv,:);
-    
-            % Remove NaNs/Infs (still useful if you later use NaN filler)
-            good = isfinite(xyz(:,1)) & isfinite(xyz(:,2)) & isfinite(xyz(:,3));
-            xyz = xyz(good,:);
-    
-            % Decimate for speed
-            if obj.Decimate > 1 && size(xyz,1) > obj.Decimate
-                xyz = xyz(1:obj.Decimate:end,:);
+        function stepImpl(obj, xyz)
+            obj.stepCount = obj.stepCount + 1;
+
+            if isempty(xyz)
+                if mod(obj.stepCount, 20) == 0
+                    disp('PointCloudViewer: xyz is empty');
+                end
+                return;
             end
-    
-            set(obj.Sc, 'XData', xyz(:,1), 'YData', xyz(:,2), 'ZData', xyz(:,3));
-        end
-    
-        if obj.ShowDetection && numel(pos) == 3 && all(isfinite(pos(:)))
-            set(obj.DetSc, 'XData', pos(1), 'YData', pos(2), 'ZData', pos(3), 'Visible', 'on');
-        else
-            set(obj.DetSc, 'Visible', 'off');
-        end
-    
-        obj.Txt.String = sprintf('Frame %u', obj.FrameCount);
-        drawnow limitrate;
-    end
 
-        function resetImpl(obj)
-            obj.FrameCount = uint32(0);
+            % Handle both [N x 3] and [M x N x 3]
+            if ndims(xyz) == 3
+                xyz = reshape(xyz, [], 3);
+            elseif size(xyz,2) ~= 3 && size(xyz,1) == 3
+                xyz = xyz.';
+            end
+
+            valid = all(isfinite(xyz), 2);
+            xyz = xyz(valid, :);
+
+            if isempty(xyz)
+                if mod(obj.stepCount, 20) == 0
+                    disp('PointCloudViewer: xyz has no valid points');
+                end
+                return;
+            end
+
+            if mod(obj.stepCount, 20) == 0
+                fprintf('PointCloudViewer: showing %d points\n', size(xyz,1));
+            end
+
+            ptCloud = pointCloud(xyz);
+            view(obj.viewer, ptCloud);
+            drawnow limitrate;
+        end
+
+        function releaseImpl(obj)
+            obj.viewer = [];
         end
 
         function num = getNumInputsImpl(~)
-        num = 3; % xyz, nValid, pos
-    end
+            num = 1;
+        end
+
+        function num = getNumOutputsImpl(~)
+            num = 0;
+        end
 
         function flag = isInputSizeMutableImpl(~,~)
-            flag = true; % allow variable N for xyz
+            flag = true;
+        end
+
+        function flag = isInputComplexityMutableImpl(~,~)
+            flag = false;
+        end
+
+        function simMode = getSimulateUsingImpl(~)
+            simMode = "Interpreted execution";
+        end
+
+        function show = showSimulateUsingImpl(~)
+            show = true;
         end
     end
 end

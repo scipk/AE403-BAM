@@ -1,145 +1,145 @@
+import argparse
+import numpy as np
 import rclpy
 from rclpy.node import Node
+
+import airsim
+
 from sensor_msgs.msg import PointCloud2, PointField
-import numpy as np
-import msgpack
-import socket
-import struct
-import threading
-import time
-
-
-class AirsimRpcClient:
-    """Minimal AirSim msgpack-rpc client — no tornado dependency."""
-
-    def __init__(self, ip="127.0.0.1", port=41451):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((ip, port))
-        self.packer = msgpack.Packer(use_bin_type=True)
-        self.unpacker = msgpack.Unpacker(raw=False)
-        self.msg_id = 0
-        self.lock = threading.Lock()
-
-    def _call(self, method, *args):
-        with self.lock:
-            self.msg_id += 1
-            # msgpack-rpc request: [type(0), msgid, method, params]
-            request = self.packer.pack([0, self.msg_id, method, list(args)])
-            self.sock.sendall(request)
-
-            # Read response
-            while True:
-                data = self.sock.recv(4096)
-                if not data:
-                    raise ConnectionError("AirSim connection lost")
-                self.unpacker.feed(data)
-                for response in self.unpacker:
-                    # response: [type(1), msgid, error, result]
-                    if response[2] is not None:
-                        raise RuntimeError(f"AirSim RPC error: {response[2]}")
-                    return response[3]
-
-    def ping(self):
-        return self._call("ping")
-
-    def get_lidar_data(self, lidar_name, vehicle_name):
-        result = self._call("getLidarData", lidar_name, vehicle_name)
-        # result is a dict with 'point_cloud' as a flat list of floats
-        return result
-
-    def close(self):
-        self.sock.close()
 
 
 class LidarPublisher(Node):
-    def __init__(self):
-        super().__init__('lidar_publisher')
+    def __init__(
+        self,
+        host="127.0.0.1",
+        port=41451,
+        lidar_name="LidarRockUltra",
+        vehicle_name="Drone",
+        topic_name="/airsim/lidar/LidarRockUltra",
+        rate_hz=5.0,  # 🔽 slower for stability
+        frame_id="lidar_frame",
+    ):
+        super().__init__("lidar_publisher")
 
-        self.declare_parameter('vehicle_name', 'Drone')
-        self.declare_parameter('lidar_name', 'LidarRockUltra')
-        self.declare_parameter('publish_rate', 10.0)
-        self.declare_parameter('topic_name', '/airsim/lidar/LidarRockUltra')
+        self.host = host
+        self.port = port
+        self.lidar_name = lidar_name
+        self.vehicle_name = vehicle_name
+        self.topic_name = topic_name
+        self.rate_hz = rate_hz
+        self.frame_id = frame_id
 
-        vehicle = self.get_parameter('vehicle_name').value
-        lidar = self.get_parameter('lidar_name').value
-        rate = self.get_parameter('publish_rate').value
-        topic = self.get_parameter('topic_name').value
+        self.publisher_ = self.create_publisher(PointCloud2, self.topic_name, 1)
 
-        self.vehicle_name = vehicle
-        self.lidar_name = lidar
-
-        # Connect to AirSim
-        self.get_logger().info('Connecting to AirSim at 127.0.0.1:41451...')
-        self.client = AirsimRpcClient("127.0.0.1", 41451)
-        result = self.client.ping()
         self.get_logger().info(
-            f'Connected! Publishing "{lidar}" on "{topic}" at {rate} Hz'
+            f"Connecting to AirSim at {self.host}:{self.port}..."
+        )
+        self.client = airsim.MultirotorClient(ip=self.host, port=self.port)
+        self.client.confirmConnection()
+
+        self.get_logger().info(
+            f'Connected! Publishing "{self.lidar_name}" on "{self.topic_name}" at {self.rate_hz} Hz'
         )
 
-        self.publisher_ = self.create_publisher(PointCloud2, topic, 10)
-        self.timer = self.create_timer(1.0 / rate, self.timer_callback)
-        self.msg_count = 0
+        timer_period = 1.0 / self.rate_hz
+        self.timer = self.create_timer(timer_period, self.timer_callback)
 
     def timer_callback(self):
         try:
-            result = self.client.get_lidar_data(self.lidar_name, self.vehicle_name)
-        except Exception as e:
-            self.get_logger().warn(f'LiDAR read failed: {e}')
-            return
-
-        # Extract point cloud — AirSim returns a dict; the key may be
-        # 'point_cloud' or embedded differently depending on version.
-        # Try common keys:
-        raw_points = None
-        if isinstance(result, dict):
-            raw_points = result.get('point_cloud') or result.get('points')
-        elif isinstance(result, (list, tuple)):
-            raw_points = result
-
-        if not raw_points or len(raw_points) < 3:
-            return
-
-        points = np.array(raw_points, dtype=np.float32).reshape(-1, 3)
-
-        msg = PointCloud2()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'lidar_frame'
-        msg.height = 1
-        msg.width = points.shape[0]
-        msg.fields = [
-            PointField(name='x', offset=0,  datatype=PointField.FLOAT32, count=1),
-            PointField(name='y', offset=4,  datatype=PointField.FLOAT32, count=1),
-            PointField(name='z', offset=8,  datatype=PointField.FLOAT32, count=1),
-        ]
-        msg.is_bigendian = False
-        msg.point_step = 12
-        msg.row_step = 12 * points.shape[0]
-        msg.data = points.tobytes()
-        msg.is_dense = True
-
-        self.publisher_.publish(msg)
-
-        self.msg_count += 1
-        if self.msg_count % 100 == 0:
-            self.get_logger().info(
-                f'Published {self.msg_count} scans ({points.shape[0]} pts last)'
+            lidar_data = self.client.getLidarData(
+                lidar_name=self.lidar_name,
+                vehicle_name=self.vehicle_name,
             )
 
-    def on_shutdown(self):
-        self.client.close()
+            raw_points = lidar_data.point_cloud
+
+            if raw_points is None or len(raw_points) == 0:
+                self.get_logger().warn("No LiDAR points received.")
+                return
+
+            # Convert to Nx3
+            points = np.asarray(raw_points, dtype=np.float32).reshape(-1, 3)
+
+            # Remove invalid points
+            valid = np.all(np.isfinite(points), axis=1)
+            points = points[valid, :]
+
+            if points.shape[0] == 0:
+                self.get_logger().warn("No valid LiDAR points after filtering.")
+                return
+
+            # 🔥 Downsample to 4000 points
+            max_points = 4000
+            if points.shape[0] > max_points:
+                idx = np.random.choice(points.shape[0], max_points, replace=False)
+                points = points[idx, :]
+
+            msg = self.points_to_pointcloud2(points)
+            self.publisher_.publish(msg)
+
+            self.get_logger().debug(f"Published {points.shape[0]} points")
+
+        except Exception as e:
+            self.get_logger().error(f"LiDAR publish failed: {e}")
+
+    def points_to_pointcloud2(self, points):
+        msg = PointCloud2()
+
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.frame_id
+
+        msg.height = 1
+        msg.width = points.shape[0]
+
+        msg.fields = [
+            PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+            PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+            PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+        ]
+
+        msg.is_bigendian = False
+        msg.point_step = 12
+        msg.row_step = msg.point_step * points.shape[0]
+        msg.is_dense = True
+
+        msg.data = points.astype(np.float32).tobytes()
+
+        return msg
 
 
 def main(args=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=41451)
+    parser.add_argument("--lidar-name", default="LidarRockUltra")
+    parser.add_argument("--vehicle-name", default="Drone")
+    parser.add_argument("--topic-name", default="/airsim/lidar/LidarRockUltra")
+    parser.add_argument("--rate", type=float, default=5.0)
+    parser.add_argument("--frame-id", default="lidar_frame")
+
+    parsed_args, _ = parser.parse_known_args()
+
     rclpy.init(args=args)
-    node = LidarPublisher()
+
+    node = LidarPublisher(
+        host=parsed_args.host,
+        port=parsed_args.port,
+        lidar_name=parsed_args.lidar_name,
+        vehicle_name=parsed_args.vehicle_name,
+        topic_name=parsed_args.topic_name,
+        rate_hz=parsed_args.rate,
+        frame_id=parsed_args.frame_id,
+    )
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    node.on_shutdown()
-    node.destroy_node()
-    rclpy.shutdown()
+    finally:
+        node.get_logger().info("Shutting down lidar_publisher...")
+        node.destroy_node()
+        rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
