@@ -33,3 +33,5 @@ ChallengeProblem/Chal_Prob_plots/
 /ROS2_ws
 /ROS2_ws
 /VisualEnv
+
+*.pdf
