@@ -92,8 +92,13 @@ function [fig_traj, fig_grnd, fig_alt] = plot_trajectories( ...
 
     for i = 1 : n_traj
         sim_data = logsout{i}.Values;
-        
+         
+        % disp("plot_trajectories.m line 96")
+        % disp(class(sim_data))
+        % disp(sim_data)
+
         time{i} = sim_data.RefInputs.pos_i.Time;
+        % time{i} = sim_data.Time;
     
         if options.plot_reference
             x_des{i} = sim_data.RefInputs.pos_i.Data(:, 1);
