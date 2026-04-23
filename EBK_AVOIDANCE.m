@@ -1,5 +1,5 @@
 %{
-BATCH_AVOIDANCE_TEST
+EBK_AVOIDANCE.m
 
 Description:
     Batch testing script for the AE403W Autonomous Collision Avoidance
@@ -8,10 +8,10 @@ Description:
     generates aggregate figures suitable for a final presentation.
 
     Supports two modes:
-      MODE 1 — BATCH: Run many trajectory pairs sequentially (or in
+      MODE 1 -- BATCH: Run many trajectory pairs sequentially (or in
                parallel via parsim), collect statistics, generate
                aggregate performance plots.
-      MODE 2 — DEMO: Run a single trajectory pair with ROS2 publishing
+      MODE 2 -- DEMO: Run a single trajectory pair with ROS2 publishing
                enabled for real-time Unreal Engine visualization.
 
 Instructions:
@@ -19,19 +19,19 @@ Instructions:
     2. Configure the settings in the CONFIGURATION section below
     3. Run:  >> batch_avoidance_test
 
-Team: SDSU AE403W — Elite Ball Knowledge (EBK)
+Team: SDSU AE403W - Elite Ball Knowledge (EBK)
 Date: April 2026
 %}
 
 %% ========================================================================
-%  CONFIGURATION — EDIT THIS SECTION
+%  CONFIGURATION - EDIT THIS SECTION
 %  ========================================================================
 clear userStruct; clc; close all;
 
 % ---- RUN MODE -----------------------------------------------------------
 %   'batch' = Run N trajectory pairs sequentially, generate statistics
 %   'demo'  = Run ONE pair with ROS2 + Unreal Engine visualization
-run_mode = 'batch';
+run_mode = 'demo';
 
 % ---- BATCH SETTINGS (only used when run_mode = 'batch') -----------------
 N_runs       = 25;      % Number of trajectory pairs to run (max 3000)
@@ -56,7 +56,7 @@ model_name    = 'BAM';
 %  LOAD TRAJECTORY DATA (COMMON TO BOTH MODES)
 %  ========================================================================
 fprintf('\n==============================================\n');
-fprintf('  AE403W Collision Avoidance — %s mode\n', upper(run_mode));
+fprintf('  AE403W Collision Avoidance - %s mode\n', upper(run_mode));
 fprintf('==============================================\n\n');
 
 file_obj_own  = matfile(['ChallengeProblem' filesep 'ref_trajectory_data.mat']);
@@ -71,7 +71,7 @@ end % Makes the BatchResults directory if it doesn't exist
 %  ========================================================================
 if strcmpi(run_mode, 'demo')
     %% ====================================================================
-    %  DEMO MODE — Single run with ROS2 + Unreal Engine
+    %  DEMO MODE - Single run with ROS2 + Unreal Engine
     %  ====================================================================
     fprintf('Running DEMO mode: Trajectory pair %d/%d with ROS2\n', ...
         demo_own_traj, demo_bball_traj);
@@ -120,11 +120,11 @@ if strcmpi(run_mode, 'demo')
     end
     fprintf('  Plots saved to: %s\n\n', demo_out_dir);
 
-    return;  % Exit — demo mode complete
+    return;  % Exit - demo mode complete
 end
 
 %% ========================================================================
-%  BATCH MODE — Run N trajectory pairs, collect statistics
+%  BATCH MODE - Run N trajectory pairs, collect statistics
 %  ========================================================================
 traj_indices = start_pair : (start_pair + N_runs - 1);
 fprintf('Running BATCH: %d trajectory pairs (%d to %d)\n\n', ...
@@ -353,19 +353,13 @@ end
 %% ========================================================================
 %  FIGURE 4: SELECTED 3D TRAJECTORY CASES
 %  ========================================================================
-% Identify 3 interesting cases from the valid runs
 valid_dists_vec  = results.min_dist(valid);
 valid_indices    = find(valid);
-case_labels  = {'Best Avoidance', 'Tightest Dodge', 'Closest Approach'};
-case_colors  = {[0.2 0.6 0.2], [0.9 0.6 0.1], [0.9 0.2 0.2]};
-
-fig4 = figure('Name', 'Selected Trajectories', 'Color', 'w', ...
-    'Position', [200 100 1400 450]);
 
 if isempty(valid_indices)
-    axes(fig4);
+    fig4 = figure('Name', 'Selected Trajectories', 'Color', 'w');
     axis off;
-    text(0.5, 0.5, 'No valid runs available for selected trajectory plots', ...
+    text(0.5, 0.5, 'No valid runs available', ...
         'Units', 'normalized', 'HorizontalAlignment', 'center', ...
         'FontSize', 14, 'FontWeight', 'bold');
 else
@@ -380,59 +374,55 @@ else
         [~, tight_local]   = min(avoided_dists);
         tight_idx          = valid_indices(avoided_local_idx(tight_local));
     else
-        tight_idx = best_idx;  % fallback if none avoided
+        tight_idx = best_idx;
     end
 
     % Worst case (smallest miss distance overall)
     [~, worst_local]   = min(valid_dists_vec);
     worst_idx          = valid_indices(worst_local);
-end
 
-case_indices = [best_idx, tight_idx, worst_idx];
+    case_indices = [best_idx, tight_idx, worst_idx];
+    case_labels  = {'Best Avoidance', 'Tightest Dodge', 'Closest Approach'};
+    case_colors  = {[0.2 0.6 0.2], [0.9 0.6 0.1], [0.9 0.2 0.2]};
 
-fig4 = figure('Name', 'Selected Trajectories', 'Color', 'w', ...
-    'Position', [200 100 1400 450]);
+    fig4 = figure('Name', 'Selected Trajectories', 'Color', 'w', ...
+        'Position', [200 100 1400 450]);
 
-for c = 1:3
-    ci = case_indices(c);
-    subplot(1, 3, c);
-    hold on; box on; grid on;
+    for c = 1:3
+        ci = case_indices(c);
+        subplot(1, 3, c);
+        hold on; box on; grid on;
 
-    if ~isempty(results.logsout_data) && ci <= length(results.logsout_data) ...
-            && ~isempty(results.logsout_data{ci})
+        if ci <= length(results.logsout_data) && ~isempty(results.logsout_data{ci})
+            sim_data  = results.logsout_data{ci}{1}.Values;
+            drone_pos = sim_data.EOM.InertialData.Pos_bii.Data;
+            ref_pos   = sim_data.RefInputs.pos_i.Data;
 
-        sim_data  = results.logsout_data{ci}{1}.Values;
-        drone_pos = sim_data.EOM.InertialData.Pos_bii.Data;
-        ref_pos   = sim_data.RefInputs.pos_i.Data;
+            plot3(drone_pos(:,1), drone_pos(:,2), -drone_pos(:,3), ...
+                '-', 'Color', case_colors{c}, 'LineWidth', 2);
+            plot3(ref_pos(:,1), ref_pos(:,2), -ref_pos(:,3), ...
+                'k--', 'LineWidth', 1);
 
-        % Drone flown path
-        plot3(drone_pos(:,1), drone_pos(:,2), -drone_pos(:,3), ...
-            '-', 'Color', case_colors{c}, 'LineWidth', 2);
-
-        % Reference path
-        plot3(ref_pos(:,1), ref_pos(:,2), -ref_pos(:,3), ...
-            'k--', 'LineWidth', 1);
-
-        % Baseball path
-        if ~isempty(results.bball_pw_data{ci})
-            bpw = results.bball_pw_data{ci};
-            t_range = [bpw{1}{1}.tint(1), bpw{1}{end}.tint(end)];
-            t_eval  = linspace(t_range(1), t_range(2), ...
-                round((t_range(2)-t_range(1))/0.01));
-            bball_pos = evalPWCurve(bpw, t_eval, 0);
-            plot3(bball_pos(:,1), bball_pos(:,2), -bball_pos(:,3), ...
-                'r:', 'LineWidth', 2);
+            if ~isempty(results.bball_pw_data{ci})
+                bpw = results.bball_pw_data{ci};
+                t_range = [bpw{1}{1}.tint(1), bpw{1}{end}.tint(end)];
+                t_eval  = linspace(t_range(1), t_range(2), ...
+                    round((t_range(2)-t_range(1))/0.01));
+                bball_pos = evalPWCurve(bpw, t_eval, 0);
+                plot3(bball_pos(:,1), bball_pos(:,2), -bball_pos(:,3), ...
+                    'r:', 'LineWidth', 2);
+            end
         end
-    end
 
-    ax = gca; ax.YDir = 'reverse';
-    xlabel('N (m)'); ylabel('E (m)'); zlabel('Alt (m)');
-    title(sprintf('{\\bf %s}\nPair %d | Miss = %.2f m', ...
-        case_labels{c}, results.traj_num(ci), results.min_dist(ci)), ...
-        'FontSize', 11);
-    view(-25, 35);
-    axis equal;
-    hold off;
+        ax = gca; ax.YDir = 'reverse';
+        xlabel('N (m)'); ylabel('E (m)'); zlabel('Alt (m)');
+        title(sprintf('{\\bf %s}\nPair %d | Miss = %.2f m', ...
+            case_labels{c}, results.traj_num(ci), results.min_dist(ci)), ...
+            'FontSize', 11);
+        view(-25, 35);
+        axis equal;
+        hold off;
+    end
 end
 
 if save_figures
@@ -441,7 +431,7 @@ if save_figures
 end
 
 %% ========================================================================
-%  FIGURE 5: CUMULATIVE DISTRIBUTION — MISS DISTANCE
+%  FIGURE 5: CUMULATIVE DISTRIBUTION - MISS DISTANCE
 %  ========================================================================
 fig5 = figure('Name', 'CDF of Miss Distance', 'Color', 'w', ...
     'Position', [250 250 600 400]);
