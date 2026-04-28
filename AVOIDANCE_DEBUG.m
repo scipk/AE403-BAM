@@ -85,8 +85,8 @@ model_name = 'BAM'; % Define slx model name to run
 % Specify the desired own-ship trajectory and the baseball trajectory
 % numbers to execute in simulation and initialize the userStruct with their
 % BP waypoints.
-own_traj_num = 5; % Select desired own-ship traj number
-bball_traj_num = 5; % Select desired bball traj number
+own_traj_num = 4; % Select desired own-ship traj number
+bball_traj_num = 4; % Select desired bball traj number
 
 % Load the ownship reference trajectory of interest
 file_obj = matfile(['ChallengeProblem' filesep 'ref_trajectory_data.mat']); %
