@@ -19,7 +19,7 @@ function [vel_est] = estimateBallVelocityFromHistory(pos_now, t_now, opts)
 
 persistent posHist timeHist
 
-opts.N_hist = 100; 
+opts.N_hist = 10; 
 opts.speed_clip = 60; 
 opts.use_polyfit = true; 
 
@@ -85,10 +85,21 @@ if numel(timeHist) >= 3 && opts.use_polyfit
     % The slope of each line is the corresponding velocity component.
     tt = timeHist(:) - timeHist(end);
 
-    for j = 1:3
+    % x, y: linear
+    for j = 1:2
         p = polyfit(tt, posHist(j,:).', 1);
         vel_est(j) = p(1);
     end
+
+    % z: quadratic
+    pz = polyfit(tt, posHist(3,:).', 2);
+    dpz = polyder(pz);
+    vel_est(3) = polyval(dpz, 0);
+
+    % for j = 1:3
+    %     p = polyfit(tt, posHist(j,:).', 1);
+    %     vel_est(j) = p(1);
+    % end
 
     method = 'polyfit_recent_history';
 
