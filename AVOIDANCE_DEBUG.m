@@ -32,7 +32,7 @@ if ~any(contains({dir().name}, 'ChallengeProblem'))
     error('BAM Error: Cannot find ChallengeProblem directory.');
 end
 
-plot_flag = 1; % plot_flag == 0 => perform setup only (user run in simulink)
+plot_flag = 0; % plot_flag == 0 => perform setup only (user run in simulink)
                % plot_flag == 1 => perform setup, run sim and plot trajectories
 
 % ************************************************************************
@@ -131,6 +131,86 @@ userStruct.simulation_defaults.RefInputsBball.time_wptsZ = time_wptsZ_cell{1};
 % setup is in the BAM top level folder, so call it from there if currently
 % in the ChallengeProblem directory
 setup;
+
+%% =====================================================================
+% EKF Initial State Seeding
+% =====================================================================
+% Problem: The EKF block inside "Ball is Moving" initializes its internal
+% state to [0;0;0;0;0;0] by default. When the action subsystem activates
+% (ball detected), the EKF sees measurements at the ball's actual position
+% but its state is at the origin. This causes a large innovation spike on
+% the first timestep, producing a transient from 0 -> actual position that
+% takes several samples to settle. Downstream, buildTraj's velocity
+% estimator interprets this jump as an enormous velocity, causing wildly
+% wrong trajectory predictions.
+%
+% Fix: Compute the ball's position at its launch time from the Bernstein
+% polynomial waypoints and set the EKF's initial state to that position.
+% This way, when "Ball is Moving" first activates, the EKF starts at (or
+% very near) the ball's actual position, and the first innovation is just
+% the measurement noise — not a 90-meter jump.
+%
+% Note: We set initial velocity to [0;0;0] because we don't have a good
+% velocity estimate at launch. The EKF will converge to the true velocity
+% within a few samples, and the startup guard in buildTraj suppresses
+% velocity estimation during this window anyway.
+% =====================================================================
+
+% Build the baseball piecewise Bernstein polynomial curve
+bball_pwcurve_setup = genPWCurve( ...
+    {wptsX_cell{1}, wptsY_cell{1}, wptsZ_cell{1}}, ...
+    {time_wptsX_cell{1}, time_wptsY_cell{1}, time_wptsZ_cell{1}});
+
+% The ball's flight starts at the first time waypoint
+bball_t_launch = time_wptsX_cell{1}(1);
+
+% Evaluate the ball's position at launch time
+% evalPWCurve returns [1x3] row vector: [x, y, z]
+% The 0 argument requests position (0th derivative)
+bb_launch_pos = evalPWCurve(bball_pwcurve_setup, bball_t_launch, 0);
+
+% Also get launch velocity (1st derivative) for a better initial estimate
+% This helps the EKF converge faster, especially at high noise levels
+bb_launch_vel = evalPWCurve(bball_pwcurve_setup, bball_t_launch, 1);
+
+% Assemble EKF initial state: [pos_x; pos_y; pos_z; vel_x; vel_y; vel_z]
+% NOTE: Check whether your EKF state vector is 6-element [pos; vel] or
+% includes additional states (e.g., acceleration). Pad with zeros if needed.
+ekf_x0 = [bb_launch_pos(:); bb_launch_vel(:)]';
+
+fprintf('EKF initial state seeded to ball launch position:\n');
+fprintf('  Position: [%.2f, %.2f, %.2f] m\n', bb_launch_pos(1), bb_launch_pos(2), bb_launch_pos(3));
+fprintf('  Velocity: [%.2f, %.2f, %.2f] m/s\n', bb_launch_vel(1), bb_launch_vel(2), bb_launch_vel(3));
+
+%% =====================================================================
+% Set the EKF block's initial state parameter
+% =====================================================================
+% IMPORTANT: The exact parameter name depends on which EKF block you're
+% using. To find the correct parameter name, run:
+%
+%   get_param('<EKF_block_path>', 'DialogParameters')
+%
+% Common parameter names:
+%   Simulink Extended Kalman Filter block: 'InitialState' or 'x0'
+%   Custom MATLAB Function EKF:           check your implementation
+%   Simulink EKF block from System ID:    'InitialStates'
+%
+% Uncomment and adjust the path below to match your model. The path
+% should be the full path to the EKF block inside "Ball is Moving".
+% You may need to open BAM.slx and right-click the EKF block -> 
+% "Copy Block Path" to get the exact path string.
+% =====================================================================
+
+% --- UNCOMMENT AND ADJUST THIS PATH ---
+EKF_BLOCK_PATH = 'BAM/BAM Controller/Avoidance Planner/Ball is Moving/EKF';
+
+% Discover available parameters (run once to find the right name):
+% disp(get_param(EKF_BLOCK_PATH, 'DialogParameters'));
+
+set_param(EKF_BLOCK_PATH, 'InitialState', mat2str(ekf_x0));
+fprintf('EKF block initial state set successfully.\n');
+% --- END UNCOMMENT BLOCK ---
+
 
 %% Exit if setup only
 if plot_flag==0
