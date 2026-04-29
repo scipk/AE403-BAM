@@ -35,6 +35,9 @@ end
 plot_flag = 1; % plot_flag == 0 => perform setup only (user run in simulink)
                % plot_flag == 1 => perform setup, run sim and plot trajectories
 
+print_pos_vel = 0; % print_pos_vel == 0 => Don't print the initial state
+                   % print_pos_vel == 1 => print the initial state
+
 % ************************************************************************
 % If ROS2 publishing is to be utilized that must uncomment the userStruct 
 % variant line below to utilize the ROS2 variant subsystem:
@@ -178,9 +181,11 @@ bb_launch_vel = evalPWCurve(bball_pwcurve_setup, bball_t_launch, 1);
 % includes additional states (e.g., acceleration). Pad with zeros if needed.
 ekf_x0 = [bb_launch_pos(:); bb_launch_vel(:)]';
 
-fprintf('EKF initial state seeded to ball launch position:\n');
-fprintf('  Position: [%.2f, %.2f, %.2f] m\n', bb_launch_pos(1), bb_launch_pos(2), bb_launch_pos(3));
-fprintf('  Velocity: [%.2f, %.2f, %.2f] m/s\n', bb_launch_vel(1), bb_launch_vel(2), bb_launch_vel(3));
+if print_pos_vel 
+    fprintf('EKF initial state seeded to ball launch position:\n');
+    fprintf('  Position: [%.2f, %.2f, %.2f] m\n', bb_launch_pos(1), bb_launch_pos(2), bb_launch_pos(3));
+    fprintf('  Velocity: [%.2f, %.2f, %.2f] m/s\n', bb_launch_vel(1), bb_launch_vel(2), bb_launch_vel(3));
+end
 
 %% =====================================================================
 % Set the EKF block's initial state parameter
