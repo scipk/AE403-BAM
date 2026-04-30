@@ -31,12 +31,12 @@ clear userStruct; clc; close all;
 % ---- RUN MODE -----------------------------------------------------------
 %   'batch' = Run N trajectory pairs sequentially, generate statistics
 %   'demo'  = Run ONE pair with ROS2 + Unreal Engine visualization
-run_mode = 'demo';
+run_mode = 'batch';
 
 % ---- BATCH SETTINGS (only used when run_mode = 'batch') -----------------
-N_runs       = 25;      % Number of trajectory pairs to run (max 3000)
-start_pair   = 1;       % First trajectory pair index
-use_parsim   = false;   % true = use parsim (Parallel Computing Toolbox)
+N_runs      = 3;       % Number of trajectory pairs to run (max 3000)
+start_pair  = 1;        % First trajectory pair index
+use_parsim  = false;    % true = use parsim (Parallel Computing Toolbox)
                         % false = sequential for loop (more reliable)
 
 % ---- DEMO SETTINGS  -----------------------------------------------------
@@ -132,12 +132,12 @@ fprintf('Running BATCH: %d trajectory pairs (%d to %d)\n\n', ...
 
 % --- Preallocate results ---
 results = struct();
-results.traj_num    = traj_indices(:);
-results.min_dist    = NaN(N_runs, 1);
-results.t_cpa       = NaN(N_runs, 1);
-results.avoided     = false(N_runs, 1);
-results.sim_time    = NaN(N_runs, 1);
-results.errored     = false(N_runs, 1);
+results.traj_num      = traj_indices(:);
+results.min_dist      = NaN(N_runs, 1);
+results.t_cpa         = NaN(N_runs, 1);
+results.avoided       = false(N_runs, 1);
+results.sim_time      = NaN(N_runs, 1);
+results.errored       = false(N_runs, 1);
 results.logsout_data  = cell(N_runs, 1);
 results.bball_pw_data = cell(N_runs, 1);
 
@@ -146,23 +146,47 @@ batch_userStruct.variants.pubType           = 1;  % No ROS2
 batch_userStruct.variants.refInputTypeBball = 2;  % Bernstein baseball traj
 batch_userStruct.variants.pubTypeBball      = 1;  % No ROS2 baseball
 
-% --- Store logsout for selected cases (best, tightest, worst) ---
-% selected_cases = struct('logsout', cell(3,1), 'bball_pwcurve', cell(3,1), ...
-%                         'pair_num', zeros(3,1), 'label', {'','',''});
+% --- Load model and pre-compile ONCE before the loop -------------------
+% Run full setup exactly once so that environment, vehicle, FCS, variants,
+% buses, paths, etc. are all configured. Only trajectory-dependent steps
+% (ref inputs, baseball inputs, ICs, params) need to re-run per iteration.
+fprintf('Loading model and building accelerator target (one-time) ... \n');
+build_tic = tic;
+
+userStruct = batch_userStruct;
+[userStruct, ~, ~, ~, ~, ~, ~, ...
+ ~, ~, ~, ~, ~, ~] = ...
+    load_trajectory_pair(userStruct, file_obj_own, file_obj_bb, ...
+                         traj_indices(1), traj_indices(1));
+assignin('base', 'userStruct', userStruct);
+evalin('base', 'setup;');
+[~, model_name, ~] = fileparts(model_name);  % setup may append .slx
+
+load_system(model_name);
+set_param(model_name, 'SimulationMode', 'accelerator');
+accelbuild(model_name);   % Explicit one-time compile
+
+% Save the fully-populated userStruct as the per-run template.
+% This preserves all fields set by setupUserStruct, setupTypes,
+% setupDefaults, setupVariants, etc. — only waypoints/stop_time
+% change per run via load_trajectory_pair.
+full_userStruct = userStruct;
+
+fprintf('done [%.1f s]\n\n', toc(build_tic));
 
 % --- Batch timer ---
 batch_tic = tic;
 
 for run_idx = 1:N_runs
     pair_num = traj_indices(run_idx);
-    run_tic = tic;
+    run_tic  = tic;
 
     fprintf('[%3d/%3d] Trajectory pair %d ... ', run_idx, N_runs, pair_num);
 
     try
         % --- Reset per-run variables but keep a clean userStruct template ---
-        clear SimIn SimPar simout
-        userStruct = batch_userStruct;
+        clear SimPar simout
+        userStruct = full_userStruct;
 
         % --- Load trajectory pair ---
         [userStruct, ~, ~, ~, ~, ~, ~, ...
@@ -171,13 +195,18 @@ for run_idx = 1:N_runs
             load_trajectory_pair(userStruct, file_obj_own, file_obj_bb, ...
                                  pair_num, pair_num);
 
-        % --- Setup ---
-        assignin('base', 'userStruct', userStruct);
-        evalin('base', 'setup;');
+        % --- Only re-run trajectory-dependent setup steps ---------------
+        % Everything else (environment, vehicle, FCS, variants, buses,
+        % units, paths) is identical across runs and was set once above.
+        SimIn = setupRefInputs(SimIn, userStruct);
+        SimIn = setupBballRefInputs(SimIn, userStruct);
+        SimIn = setupIC(SimIn, userStruct);
+        [SimIn, SimPar] = setupParams(SimIn, userStruct);
 
-        % --- Run simulation in accelerator mode ---
-        load_system(model_name);
-        simout = sim(model_name, 'SimulationMode', 'accelerator');
+        % --- Set per-run StopTime and run simulation --------------------
+        set_param(model_name, 'StopTime', ...
+                  num2str(userStruct.model_params.stop_time));
+        simout = sim(model_name);
 
         % --- Compute miss distance ---
         bball_pwcurve = genPWCurve( ...
@@ -186,10 +215,10 @@ for run_idx = 1:N_runs
 
         [min_dist, t_cpa] = compute_miss_distance(simout, bball_pwcurve);
 
-        results.min_dist(run_idx)  = min_dist;
-        results.t_cpa(run_idx)     = t_cpa;
-        results.avoided(run_idx)   = min_dist > R_safe;
-        results.sim_time(run_idx)  = toc(run_tic);
+        results.min_dist(run_idx) = min_dist;
+        results.t_cpa(run_idx)    = t_cpa;
+        results.avoided(run_idx)  = min_dist > R_safe;
+        results.sim_time(run_idx) = toc(run_tic);
 
         % Store logsout and bball for post-hoc selected plots
         results.logsout_data{run_idx}  = simout.logsout;
@@ -202,7 +231,7 @@ for run_idx = 1:N_runs
         end
 
     catch ME
-        results.errored(run_idx) = true;
+        results.errored(run_idx)  = true;
         results.sim_time(run_idx) = toc(run_tic);
         fprintf('ERROR: %s [%.1f s]\n', ME.message, results.sim_time(run_idx));
     end

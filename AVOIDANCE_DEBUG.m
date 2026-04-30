@@ -32,7 +32,7 @@ if ~any(contains({dir().name}, 'ChallengeProblem'))
     error('BAM Error: Cannot find ChallengeProblem directory.');
 end
 
-plot_flag = 1; % plot_flag == 0 => perform setup only (user run in simulink)
+plot_flag = 0; % plot_flag == 0 => perform setup only (user run in simulink)
                % plot_flag == 1 => perform setup, run sim and plot trajectories
 
 print_pos_vel = 0; % print_pos_vel == 0 => Don't print the initial state
