@@ -163,6 +163,11 @@ evalin('base', 'setup;');
 [~, model_name, ~] = fileparts(model_name);  % setup may append .slx
 
 load_system(model_name);
+
+% Point EKF InitialState at a workspace variable (once, before FastRestart)
+EKF_BLOCK_PATH = 'BAM/BAM Controller/Avoidance Planner/Ball is Moving/EKF';
+set_param(EKF_BLOCK_PATH, 'InitialState', '[0 0 0 0 0 0]');
+
 set_param(model_name, 'SimulationMode', 'accelerator');
 accelbuild(model_name);   % Explicit one-time compile
 
@@ -203,16 +208,23 @@ for run_idx = 1:N_runs
         SimIn = setupIC(SimIn, userStruct);
         [SimIn, SimPar] = setupParams(SimIn, userStruct);
 
+        % --- Seed EKF initial state to ball launch position/velocity ----
+        bball_pwcurve = genPWCurve( ...
+            [bb_wptsX_cell, bb_wptsY_cell, bb_wptsZ_cell], ...
+            [bb_time_wptsX_cell, bb_time_wptsY_cell, bb_time_wptsZ_cell]);
+
+        bball_t_launch = bb_time_wptsX_cell{1}(1);
+        bb_launch_pos  = evalPWCurve(bball_pwcurve, bball_t_launch, 0);
+        bb_launch_vel  = evalPWCurve(bball_pwcurve, bball_t_launch, 1);
+        ekf_x0 = [bb_launch_pos(:); bb_launch_vel(:)]';
+        set_param(EKF_BLOCK_PATH, 'InitialState', mat2str(ekf_x0));
+
         % --- Set per-run StopTime and run simulation --------------------
         set_param(model_name, 'StopTime', ...
                   num2str(userStruct.model_params.stop_time));
         simout = sim(model_name);
 
         % --- Compute miss distance ---
-        bball_pwcurve = genPWCurve( ...
-            [bb_wptsX_cell, bb_wptsY_cell, bb_wptsZ_cell], ...
-            [bb_time_wptsX_cell, bb_time_wptsY_cell, bb_time_wptsZ_cell]);
-
         [min_dist, t_cpa] = compute_miss_distance(simout, bball_pwcurve);
 
         results.min_dist(run_idx) = min_dist;
