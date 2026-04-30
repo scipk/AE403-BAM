@@ -19,7 +19,7 @@ function [vel_est] = estimateBallVelocityFromHistory(pos_now, t_now, opts)
 
 persistent posHist timeHist
 
-opts.N_hist = 100; 
+opts.N_hist = 10; 
 opts.speed_clip = 60; 
 opts.use_polyfit = true; 
 

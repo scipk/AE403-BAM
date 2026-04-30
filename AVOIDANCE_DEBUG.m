@@ -255,4 +255,4 @@ if ~exist(out_fpath, 'dir')
 end
 
 plot_trajectories(simout.logsout, bball_pwcurve, save_dir=out_fpath);
-plot_multirotor_states(simout.logsout, save_dir=out_fpath);
+% plot_multirotor_states(simout.logsout, save_dir=out_fpath);
