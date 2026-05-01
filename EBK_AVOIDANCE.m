@@ -35,13 +35,13 @@ run_mode = 'batch';
 
 % ---- BATCH SETTINGS (only used when run_mode = 'batch') -----------------
 N_runs      = 3;       % Number of trajectory pairs to run (max 3000)
-start_pair  = 1;        % First trajectory pair index
+start_pair  = 2;        % First trajectory pair index
 use_parsim  = false;    % true = use parsim (Parallel Computing Toolbox)
                         % false = sequential for loop (more reliable)
 
 % ---- DEMO SETTINGS  -----------------------------------------------------
-demo_own_traj  = 4;       % Own-ship trajectory number for Unreal demo
-demo_bball_traj = 4;      % Baseball trajectory number for Unreal demo
+demo_own_traj  = 64;       % Own-ship trajectory number for Unreal demo
+demo_bball_traj = 64;      % Baseball trajectory number for Unreal demo
 
 % ---- AVOIDANCE SETTINGS ------------------------------------------------
 R_safe = 3.0;           % Safety radius the same as in Avoidance Controller 
@@ -150,7 +150,7 @@ batch_userStruct.variants.pubTypeBball      = 1;  % No ROS2 baseball
 % Run full setup exactly once so that environment, vehicle, FCS, variants,
 % buses, paths, etc. are all configured. Only trajectory-dependent steps
 % (ref inputs, baseball inputs, ICs, params) need to re-run per iteration.
-fprintf('Loading model and building accelerator target (one-time) ... \n');
+fprintf('Loading model and building target (one-time) ... \n');
 build_tic = tic;
 
 userStruct = batch_userStruct;
@@ -164,17 +164,19 @@ evalin('base', 'setup;');
 
 load_system(model_name);
 
-% Point EKF InitialState at a workspace variable (once, before FastRestart)
 EKF_BLOCK_PATH = 'BAM/BAM Controller/Avoidance Planner/Ball is Moving/EKF';
-set_param(EKF_BLOCK_PATH, 'InitialState', '[0 0 0 0 0 0]');
 
-set_param(model_name, 'SimulationMode', 'accelerator');
-accelbuild(model_name);   % Explicit one-time compile
+set_param(model_name, 'SimulationMode', 'normal');
+
+% --- Warm-up: burn first-call initialization with a throwaway sim -------
+fprintf('Warming up model (first-call init)... ');
+warmup_stop = get_param(model_name, 'StopTime');
+set_param(model_name, 'StopTime', '0.01');
+sim(model_name);
+set_param(model_name, 'StopTime', warmup_stop);
+fprintf('done.\n');
 
 % Save the fully-populated userStruct as the per-run template.
-% This preserves all fields set by setupUserStruct, setupTypes,
-% setupDefaults, setupVariants, etc. — only waypoints/stop_time
-% change per run via load_trajectory_pair.
 full_userStruct = userStruct;
 
 fprintf('done [%.1f s]\n\n', toc(build_tic));
@@ -217,12 +219,16 @@ for run_idx = 1:N_runs
         bb_launch_pos  = evalPWCurve(bball_pwcurve, bball_t_launch, 0);
         bb_launch_vel  = evalPWCurve(bball_pwcurve, bball_t_launch, 1);
         ekf_x0 = [bb_launch_pos(:); bb_launch_vel(:)]';
-        set_param(EKF_BLOCK_PATH, 'InitialState', mat2str(ekf_x0));
 
-        % --- Set per-run StopTime and run simulation --------------------
-        set_param(model_name, 'StopTime', ...
-                  num2str(userStruct.model_params.stop_time));
-        simout = sim(model_name);
+        % --- Build per-run SimulationInput (no set_param dirtying) ------
+        simIn = Simulink.SimulationInput(model_name);
+        simIn = simIn.setBlockParameter(EKF_BLOCK_PATH, ...
+                    'InitialState', mat2str(ekf_x0));
+        simIn = simIn.setModelParameter('StopTime', ...
+                    num2str(userStruct.model_params.stop_time));
+
+        % --- Run simulation ---------------------------------------------
+        simout = sim(simIn);
 
         % --- Compute miss distance ---
         [min_dist, t_cpa] = compute_miss_distance(simout, bball_pwcurve);
@@ -239,7 +245,7 @@ for run_idx = 1:N_runs
         if results.avoided(run_idx)
             fprintf('AVOIDED (%.2f m) [%.1f s]\n', min_dist, results.sim_time(run_idx));
         else
-            fprintf('MISS    (%.2f m) [%.1f s]\n', min_dist, results.sim_time(run_idx));
+            fprintf('DID NOT AVOID (%.2f m) [%.1f s]\n', min_dist, results.sim_time(run_idx));
         end
 
     catch ME
