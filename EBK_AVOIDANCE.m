@@ -31,17 +31,18 @@ clear userStruct; clc; close all;
 % ---- RUN MODE -----------------------------------------------------------
 %   'batch' = Run N trajectory pairs sequentially, generate statistics
 %   'demo'  = Run ONE pair with ROS2 + Unreal Engine visualization
-run_mode = 'batch';
+run_mode = 'demo';
 
 % ---- BATCH SETTINGS (only used when run_mode = 'batch') -----------------
-N_runs      = 3;       % Number of trajectory pairs to run (max 3000)
-start_pair  = 2;        % First trajectory pair index
+N_runs      = 100;       % Number of trajectory pairs to run (max 3000)
+start_pair  = 1;        % First trajectory pair index
 use_parsim  = false;    % true = use parsim (Parallel Computing Toolbox)
                         % false = sequential for loop (more reliable)
 
 % ---- DEMO SETTINGS  -----------------------------------------------------
-demo_own_traj  = 64;       % Own-ship trajectory number for Unreal demo
-demo_bball_traj = 64;      % Baseball trajectory number for Unreal demo
+pair = 100;
+demo_own_traj  = pair;       % Own-ship trajectory number for Unreal demo
+demo_bball_traj = pair;      % Baseball trajectory number for Unreal demo
 
 % ---- AVOIDANCE SETTINGS ------------------------------------------------
 R_safe = 3.0;           % Safety radius the same as in Avoidance Controller 
@@ -468,6 +469,7 @@ else
             'FontSize', 11);
         view(-25, 35);
         axis equal;
+        zlim([0 ax.ZLim(2)]);
         hold off;
     end
 end
