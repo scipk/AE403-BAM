@@ -31,7 +31,7 @@ clear userStruct; clc; close all;
 % ---- RUN MODE -----------------------------------------------------------
 %   'batch' = Run N trajectory pairs sequentially, generate statistics
 %   'demo'  = Run ONE pair with ROS2 + Unreal Engine visualization
-run_mode = 'demo';
+run_mode = 'batch';
 
 % ---- BATCH SETTINGS (only used when run_mode = 'batch') -----------------
 N_runs      = 100;       % Number of trajectory pairs to run (max 3000)
